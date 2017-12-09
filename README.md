@@ -14,8 +14,8 @@ the shuttle would have to be deleted too.
 ## Long term extra features
 - Add the locations of all the buildings to the map, so people can navigate on foot like Waze.
 
-<hr>
 I've left the documentation for the Flask Starter Repo i used below:
+
 # Flask API Starter Pack
 Small starter pack for a Flask JSON API.
 * JWT Authentication
