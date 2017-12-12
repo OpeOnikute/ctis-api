@@ -6,7 +6,8 @@ URLS = {
         'register': '/register',
         'confirm': '/<username>/confirm',
         'get_drivers': '/drivers',
-        'update': '/<user_id>'
+        'update': '/<user_id>',
+        'login': '/login'
     },
     'drivers': {
         'get': '/'

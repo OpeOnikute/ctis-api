@@ -13,13 +13,25 @@ from app import auth, db
 
 @auth.verify_password
 def verify_password(userid_or_token, password):
-    user = User.verify_auth_token(userid_or_token)
-    if not user:
+
+    if (type(userid_or_token) != long) and (type(userid_or_token) != int):
+        user = User.verify_auth_token(userid_or_token)
+        if not user:
+            return False
+    else:
         user = User.query.filter_by(user_id=userid_or_token).first()
         if not user or not user.verify_password(password):
             return False
+
     g.user = user
     return True
+
+
+class StatusEnum(enum.Enum):
+    enabled = 'enabled'
+    disabled = 'disabled'
+    blocked = 'blocked'
+    pending = 'pending'
 
 
 class AccountTypeEnum(enum.Enum):
@@ -39,6 +51,7 @@ class User(db.Model):
     password = db.Column(db.String(128))
     first_name = db.Column(db.String(128))
     last_name = db.Column(db.String(128))
+    status = db.Column(db.Enum(StatusEnum), default=StatusEnum.enabled)
     created = db.Column(db.DateTime())
     updated = db.Column(db.DateTime(), onupdate=datetime.now)
     registration_code = db.Column(db.Integer)
@@ -68,7 +81,7 @@ class User(db.Model):
         except BadSignature:
             return None
 
-        user = User.query.get(data['userId'])
+        user = db.session.query(User).get(data['userId'])
 
         return user
 
@@ -79,6 +92,7 @@ class User(db.Model):
             'firstName': self.first_name,
             'lastName': self.last_name,
             'email': self.email,
+            'status': self.status.value,
             'accountType': self.account_type.value if self.account_type is not None else self.account_type,
             'created': self.created,
             'updated': self.updated

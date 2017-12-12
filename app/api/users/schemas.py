@@ -28,6 +28,23 @@ register_user_schema = Draft4Validator(
     }
 )
 
+login_schema = Draft4Validator(
+    schema={
+        "title": "Login User",
+        "type": "object",
+        "properties": {
+            "email": {
+                "description": "email address",
+                "type": "string"
+            },
+            "password": {
+                "type": "string"
+            },
+        },
+        "required": ["password", "email"]
+    }
+)
+
 confirm_registration_schema = Draft4Validator(
     schema={
         "title": "Confirm Registration",
