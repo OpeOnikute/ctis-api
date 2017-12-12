@@ -40,10 +40,4 @@ def init_app(testing=False):
     app.register_blueprint(shuttles)
     app.register_blueprint(locations)
 
-    # with contextlib.closing(engine.connect()) as con:
-    #     trans = con.begin()
-    #     for table in reversed(meta.sorted_tables):
-    #         con.execute(table.delete())
-    #     trans.commit()
-
     return app
