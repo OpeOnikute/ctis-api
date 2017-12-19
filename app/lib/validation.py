@@ -12,7 +12,7 @@ def validate_schema(schema):
                 schema.validate(request.json)
             except ValidationError, ex:
                 app.logger.info('{0}'.format(ex.message))
-                return jsonify({"error": ex.message}), 400
+                return jsonify({"status": "error", "message": ex.message}), 400
             return f(*args, **kwargs)
         return wrapper
     return decorator

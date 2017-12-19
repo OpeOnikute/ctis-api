@@ -3,7 +3,7 @@ URLS = {
         'token': '/token',
         'get': '/<user_id>',
         'get_all': '/',
-        'register': '/register',
+        'register': '/signup',
         'confirm': '/<username>/confirm',
         'get_drivers': '/drivers',
         'update': '/<user_id>',

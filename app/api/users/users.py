@@ -110,13 +110,20 @@ def login():
 
     email = request.json.get('email')
     password = request.json.get('password')
+    account_type = request.args.get('account_type')
 
     user = db.session.query(User).filter_by(email=email).first()
 
     if user is None:
-        message = 'We could not find this user.'
+        message = 'Sorry, we could not find this user. If you don\'t have an account, please sign up.'
         app.logger.info(message)
         return jsonify({'status': 'error', 'message': message, 'code': 400})
+
+    if account_type is not None:
+        if user.account_type.value != account_type:
+            message = 'This user is not a/an {0}'.format(account_type)
+            app.logger.info(message)
+            return jsonify({'status': 'error', 'message': message, 'code': 400})
 
     password_valid = verify_password(user.user_id, password)
 
