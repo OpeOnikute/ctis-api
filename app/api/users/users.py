@@ -96,10 +96,10 @@ def register_user():
     #
     #     return error_resp
 
-    return_obj = user.serialize
-    return_obj['uri'] = url_for('users.get_user',
-                                user_id=user.user_id,
-                                _external=True)
+    user_obj = user.serialize
+    user_obj['uri'] = url_for('users.get_user', user_id=user.user_id, external=True)
+
+    return_obj = {'status': 'success', 'message': 'You have been registered successfully.', 'data': user_obj}
 
     return jsonify(return_obj)
 

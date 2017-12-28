@@ -110,6 +110,7 @@ def get_all_shuttles():
     status_query = request.args.get('status') or StatusEnum.enabled
     en_route = request.args.get('en_route')
     user_id = request.args.get('user_id')
+    user_location = request.args.get('user_location')
 
     query_args = {
         'status': status_query
@@ -131,7 +132,34 @@ def get_all_shuttles():
     if len(shuttles) <= 0:
         return jsonify({'code': 500, 'status': 'error', 'message': 'No shuttles were found.'})
 
-    return jsonify({'status': 'success', 'data': [shuttle.serialize for shuttle in shuttles]})
+    serialized = [shuttle.serialize for shuttle in shuttles]
+
+    # get the distances of all the shuttles and determine the closest one (if the user's location is provided
+    if user_location is not None:
+
+        shuttle_locations = ["{0}, {1}".format(shuttle["latitude"], shuttle["longitude"]) for shuttle in serialized]
+
+        try:
+            gmaps = googlemaps.Client(key=app.config['GMAPS_KEY'])
+
+            distance_response = distance_matrix(gmaps, shuttle_locations, [user_location])
+            distance_result = distance_response['rows']
+
+            # attach the shuttles' individual distance matrices
+            for shuttle in serialized:
+                # get the corresponding result in the distance results array. This is assuming that the responses are
+                # in the order they are pushed
+                index = serialized.index(shuttle)
+                shuttle_result = distance_result[index]
+
+                # The elements attribute is an array for some reason
+                shuttle['distance_matrix'] = shuttle_result["elements"][0]
+
+        except Exception as ex:
+            message = 'Could not get distance matrix: {0}'.format(ex)
+            app.logger.error(message)
+
+    return jsonify({'status': 'success', 'data': serialized})
 
 
 @locations.route(location_urls['create'], methods=['POST'])
@@ -286,8 +314,8 @@ def update_shuttle_location(shuttle_id, driver_id):
     if shuttle.user_id != driver.user_id:
         return jsonify({'code': 400, 'status': 'error', 'message': 'This shuttle is not driven by this driver.'})
 
-    shuttle.longitude = request.json.get('longitude')
-    shuttle.latitude = request.json.get('latitude')
+    shuttle.longitude = request.json.get('lng')
+    shuttle.latitude = request.json.get('lat')
 
     try:
         db.session.commit()
@@ -346,7 +374,6 @@ def update_entry(payload, entry_object, skip_values=list):
 
         if not hasattr(entry_object, converted_prop):
             continue
-        print converted_prop
         setattr(entry_object, converted_prop, payload[obj])
 
     db.session.commit()
