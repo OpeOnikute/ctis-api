@@ -74,10 +74,10 @@ update_shuttle_location_schema = Draft4Validator(
         "title": "Update shuttle location",
         "type": "object",
         "properties": {
-            "latitude": {
+            "lat": {
                 "type": "number"
             },
-            "longitude": {
+            "lng": {
                 "type": "number"
             }
         },

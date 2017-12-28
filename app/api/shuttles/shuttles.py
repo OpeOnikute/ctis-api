@@ -4,6 +4,7 @@ from googlemaps.distance_matrix import distance_matrix
 from flask import (Blueprint,
                    jsonify,
                    request,
+                   make_response,
                    url_for,
                    current_app as app)
 
@@ -28,6 +29,12 @@ shuttles = Blueprint('shuttles', __name__, url_prefix='/shuttles')
 locations = Blueprint('locations', __name__, url_prefix='/locations')
 urls = URLS['shuttles']
 location_urls = URLS['locations']
+
+
+# with app.app_context():
+#     @app.errorhandler(404)
+#     def not_found(error):
+#         return make_response(jsonify({'status': 'error', 'message': 'Sorry, we could not find this endpoint.', 'data': error}))
 
 
 @shuttles.route(urls['create'], methods=['POST'])
@@ -59,7 +66,7 @@ def create_shuttle(user_id):
                                 shuttle_id=shuttle.id,
                                 _external=True)
 
-    return jsonify(return_obj)
+    return jsonify({'status': 'success', 'data': return_obj})
 
 
 @shuttles.route(urls['get'], methods=['GET'])
@@ -87,7 +94,7 @@ def update_shuttle(shuttle_id):
         return jsonify({'status': 'error', 'message': message, 'code': 400})
 
     try:
-        update_entry(payload, shuttle)
+        update_entry(payload, shuttle, ['created'])
 
     except SQLAlchemyError as ex:
         unknown_error = "Could not update shuttle {0}: {1}".format(shuttle.brand, ex)
@@ -102,6 +109,8 @@ def get_all_shuttles():
 
     status_query = request.args.get('status') or StatusEnum.enabled
     en_route = request.args.get('en_route')
+    user_id = request.args.get('user_id')
+    user_location = request.args.get('user_location')
 
     query_args = {
         'status': status_query
@@ -115,12 +124,42 @@ def get_all_shuttles():
     if en_route is not None and (en_route in bool_converter.keys()):
         query_args['en_route'] = bool_converter[en_route]
 
+    if user_id is not None:
+        query_args['user_id'] = user_id
+
     shuttles = db.session.query(Shuttle).filter_by(**query_args).all()
 
     if len(shuttles) <= 0:
         return jsonify({'code': 500, 'status': 'error', 'message': 'No shuttles were found.'})
 
-    return jsonify({'status': 'success', 'data': [shuttle.serialize for shuttle in shuttles]})
+    serialized = [shuttle.serialize for shuttle in shuttles]
+
+    # get the distances of all the shuttles and determine the closest one (if the user's location is provided
+    if user_location is not None:
+
+        shuttle_locations = ["{0}, {1}".format(shuttle["latitude"], shuttle["longitude"]) for shuttle in serialized]
+
+        try:
+            gmaps = googlemaps.Client(key=app.config['GMAPS_KEY'])
+
+            distance_response = distance_matrix(gmaps, shuttle_locations, [user_location])
+            distance_result = distance_response['rows']
+
+            # attach the shuttles' individual distance matrices
+            for shuttle in serialized:
+                # get the corresponding result in the distance results array. This is assuming that the responses are
+                # in the order they are pushed
+                index = serialized.index(shuttle)
+                shuttle_result = distance_result[index]
+
+                # The elements attribute is an array for some reason
+                shuttle['distance_matrix'] = shuttle_result["elements"][0]
+
+        except Exception as ex:
+            message = 'Could not get distance matrix: {0}'.format(ex)
+            app.logger.error(message)
+
+    return jsonify({'status': 'success', 'data': serialized})
 
 
 @locations.route(location_urls['create'], methods=['POST'])
@@ -275,8 +314,8 @@ def update_shuttle_location(shuttle_id, driver_id):
     if shuttle.user_id != driver.user_id:
         return jsonify({'code': 400, 'status': 'error', 'message': 'This shuttle is not driven by this driver.'})
 
-    shuttle.longitude = request.json.get('longitude')
-    shuttle.latitude = request.json.get('latitude')
+    shuttle.longitude = request.json.get('lng')
+    shuttle.latitude = request.json.get('lat')
 
     try:
         db.session.commit()
@@ -311,15 +350,30 @@ def get_distance_matrix():
     return jsonify({'status': 'success', 'data': result})
 
 
-def update_entry(payload, entry_object):
+def update_entry(payload, entry_object, skip_values=list):
+    """
+    :param payload:
+    :param entry_object:
+    :param skip_values:
+    :type skip_values: list
+    :return: boolean
+    """
+
+    if 'created' not in skip_values:
+        skip_values.append('created')
+
+    if 'updated' not in skip_values:
+        skip_values.append('updated')
 
     for obj in payload:
 
         converted_prop = convert_to_snake_case(obj)
 
-        if not hasattr(entry_object, converted_prop):
-            pass
+        if converted_prop in skip_values:
+            continue
 
+        if not hasattr(entry_object, converted_prop):
+            continue
         setattr(entry_object, converted_prop, payload[obj])
 
     db.session.commit()

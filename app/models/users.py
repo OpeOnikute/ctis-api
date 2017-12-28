@@ -88,11 +88,11 @@ class User(db.Model):
     @property
     def serialize(self):
         return {
-            'userId': self.user_id,
+            '_id': self.user_id,
             'firstName': self.first_name,
             'lastName': self.last_name,
             'email': self.email,
-            'status': self.status.value,
+            'status': self.status.value if self.status is not None else self.status,
             'accountType': self.account_type.value if self.account_type is not None else self.account_type,
             'created': self.created,
             'updated': self.updated
