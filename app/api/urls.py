@@ -19,7 +19,8 @@ URLS = {
         'update': '/<shuttle_id>',
         'switch_mode': '/<shuttle_id>/mode/<driver_id>',
         'update_location': '/<shuttle_id>/location/<driver_id>',
-        'get_distance_matrix': '/distance-matrix'
+        'get_distance_matrix': '/distance-matrix',
+        'get_directions': '/directions'
     },
     'locations': {
         'create': '/',
