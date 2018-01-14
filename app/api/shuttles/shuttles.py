@@ -1,5 +1,6 @@
 import googlemaps
 from googlemaps.distance_matrix import distance_matrix
+from googlemaps.directions import directions
 
 from flask import (Blueprint,
                    jsonify,
@@ -13,14 +14,16 @@ from sqlalchemy.exc import SQLAlchemyError
 from app import auth, db
 from app.lib.validation import validate_schema
 from app.lib.helpers import convert_to_snake_case
-from app.models.shuttles import Shuttle, StatusEnum, Location
+from app.models.shuttles import Shuttle, StatusEnum, Location, Directions
 from app.models.users import User, AccountTypeEnum
 
 from app.api.shuttles.schemas import (
     create_shuttle_schema,
     add_location_schema,
     switch_shuttle_mode_schema,
-    update_shuttle_location_schema
+    update_shuttle_location_schema,
+    add_directions_schema,
+    update_location_schema
 )
 
 from app.api.urls import URLS
@@ -167,10 +170,11 @@ def get_all_shuttles():
 def add_location():
 
     name = request.json.get('name')
-    type = request.json.get('type')
+    location_type = request.json.get('type')
     description = request.json.get('description')
     latitude = request.json.get('latitude')
     longitude = request.json.get('longitude')
+    directions = request.json.get('directions')
 
     # Ensure the location doesnt already exist.
     location = db.session.query(Location).filter_by(name=name).first()
@@ -180,11 +184,18 @@ def add_location():
         app.logger.info(message)
         return jsonify({'status': 'error', 'message': message, 'code': 400})
 
-    location = Location(name, type, description, latitude, longitude)
+    location = Location(name, location_type, description, latitude, longitude)
 
     try:
         db.session.add(location)
         db.session.commit()
+
+        if directions is not None:
+            directions_obj = Directions(location.id, directions["driving"], directions['walking'], directions['transit'])
+            db.session.add(directions_obj)
+
+        db.session.commit()
+
     except SQLAlchemyError as ex:
         unknown_error = "Could not add location {0}: {1}".format(name, ex)
         app.logger.error(unknown_error)
@@ -211,11 +222,46 @@ def get_location(location_id):
     return jsonify(location.serialize)
 
 
+@locations.route(location_urls['add_directions'], methods=['POST'])
+@validate_schema(add_directions_schema)
+def add_directions_to_location(location_id):
+
+    payload = request.json
+
+    location = db.session.query(Location).filter_by(id=int(location_id)).first()
+
+    if location is None:
+        message = 'Location {0} not found.'.format(location_id)
+        app.logger.info(message)
+        return jsonify({'status': 'error', 'message': message, 'code': 400})
+
+    existing_directions = db.session.query(Directions).filter_by(location_id=int(location_id)).first()
+
+    if existing_directions is not None:
+        message = 'Sorry, directions already exist for this location: {0}.'.format(location.name)
+        app.logger.info(message)
+        return jsonify({'status': 'error', 'message': message, 'code': 400})
+
+    directions_obj = Directions(location.id, payload['driving'], payload['walking'], payload['transit'])
+
+    try:
+        db.session.add(directions_obj)
+        db.session.commit()
+
+    except SQLAlchemyError as ex:
+        unknown_error = "Could not add directions to {0}: {1}".format(location.name, ex)
+        app.logger.error(unknown_error)
+        return jsonify({'status': 'error', 'message': unknown_error, 'code': 500})
+
+    return jsonify(location.serialize)
+
+
 @locations.route(location_urls['get_all'], methods=['GET'])
 def get_all_locations():
 
     status_query = request.args.get('status') or StatusEnum.enabled
     location_type = request.args.get('type')
+    origin = request.args.get('origin')
 
     query_args = {
         'status': status_query
@@ -224,15 +270,54 @@ def get_all_locations():
     if location_type is not None:
         query_args['type'] = location_type
 
-    locations = db.session.query(Location).filter_by(**query_args).all()
+    locations_obj = db.session.query(Location).filter_by(**query_args).all()
 
-    if len(locations) <= 0:
+    serialized = [location.serialize for location in locations_obj]
+
+    if len(locations_obj) <= 0:
         return jsonify({'code': 500, 'status': 'error', 'message': 'No locations were found.'})
 
-    return jsonify({'status': 'success', 'data': [location.serialize for location in locations]})
+    # get the distances of all the shuttles and determine the closest one (if the user's location is provided
+    if origin is not None:
+
+        try:
+            gmaps = googlemaps.Client(key=app.config['DIRECTIONS_KEY'])
+
+            # TODO: Figure out how to avoid the multiple loops
+            for location in serialized:
+                location_str = "{0},{1}".format(location["latitude"], location["longitude"])
+                location['directions'] = dict()
+
+                for travel_mode in ['driving', 'walking', 'transit']:
+
+                    location['directions'][travel_mode] = dict()
+                    location['directions'][travel_mode]['routes'] = []
+
+                    direction_response = directions(gmaps, origin, location_str, travel_mode)
+
+                    for result in direction_response:
+
+                        steps = result['legs'][0]['steps'][:2]
+
+                        for step in steps:
+                            direction_result = {
+                                "html_instructions": step['html_instructions'],
+                                "duration": step["duration"],
+                                "distance": step["distance"],
+                                "travel_mode": step['travel_mode']
+                            }
+
+                            location['directions'][travel_mode]['routes'].append(direction_result)
+
+        except Exception as ex:
+            message = 'Could not get directions: {0}'.format(ex)
+            app.logger.error(message)
+
+    return jsonify({'status': 'success', 'data': serialized})
 
 
 @locations.route(location_urls['update'], methods=['PUT'])
+@validate_schema(update_location_schema)
 def update_location(location_id):
 
     payload = request.json
@@ -246,6 +331,21 @@ def update_location(location_id):
 
     try:
         update_entry(payload, location)
+
+        if payload['directions']:
+            print 'here'
+            if int(payload['directions']['location_id']) != int(location_id):
+                err_message = 'Tried to update directions for the wrong location: Location id - {0}, ' \
+                              'Direction id - {1}.'.format(location_id, payload['directions']['location_id'])
+                app.logger.info(err_message)
+
+            else:
+                location_directions = db.session.query(Directions).filter_by(location_id=location_id).first()
+                if location_directions is None:
+                    err_message = 'Location "{0}" has no directions to update.'.format(location.name)
+                    app.logger.info(err_message)
+                else:
+                    update_entry(payload['directions'], location_directions)
 
     except SQLAlchemyError as ex:
         unknown_error = "Could not update location {0}: {1}".format(location.name, ex)
@@ -350,7 +450,31 @@ def get_distance_matrix():
     return jsonify({'status': 'success', 'data': result})
 
 
-def update_entry(payload, entry_object, skip_values=list):
+@shuttles.route(urls['get_directions'], methods=['GET'])
+def get_directions():
+
+    mode = request.args.get('mode')
+    origin = request.args.get('origin')
+    destination = request.args.get('destination')
+
+    if (origin is None) or (destination is None):
+        return jsonify({'status': 'error', 'message': 'Please enter both an origin and a destination in the query.'})
+
+    if (origin == '') or (destination == ''):
+        return jsonify({'status': 'error', 'message': 'The origin and destination queries cannot be empty.'})
+
+    try:
+        gmaps = googlemaps.Client(key=app.config['GMAPS_KEY'])
+
+        result = directions(gmaps, [origin], [destination], mode)
+
+    except Exception as ex:
+        return jsonify({'status': 'error', 'message': 'Could not get directions: \'{0}\''.format(ex)})
+
+    return jsonify({'status': 'success', 'data': result})
+
+
+def update_entry(payload, entry_object, skip_values=None):
     """
     :param payload:
     :param entry_object:
@@ -358,6 +482,8 @@ def update_entry(payload, entry_object, skip_values=list):
     :type skip_values: list
     :return: boolean
     """
+
+    skip_values = skip_values or []
 
     if 'created' not in skip_values:
         skip_values.append('created')

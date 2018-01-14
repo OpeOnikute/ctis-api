@@ -26,6 +26,7 @@ URLS = {
         'create': '/',
         'get': '/<location_id>',
         'get_all': '/',
-        'update': '/<location_id>'
+        'update': '/<location_id>',
+        'add_directions': '/<location_id>/directions'
     }
 }
