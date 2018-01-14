@@ -119,8 +119,6 @@ def login():
     if AccountTypeEnum[account_type] is not None:
         query_args['account_type'] = AccountTypeEnum[account_type]
 
-    print query_args
-
     user = db.session.query(User).filter_by(**query_args).first()
 
     if user is None:
@@ -147,12 +145,12 @@ def login():
 @drivers.route(driver_urls['get'], methods=['GET'])
 def get_all_drivers():
 
-    drivers = db.session.query(User).filter_by(account_type=AccountTypeEnum.driver).all()
+    result = db.session.query(User).filter_by(account_type=AccountTypeEnum.driver).all()
 
-    if len(drivers) <= 0:
+    if len(result) <= 0:
         return jsonify({'code': 500, 'status': 'error', 'message': 'No drivers were found.'})
 
-    return jsonify({'status': 'success', 'data': [driver.serialize for driver in drivers]})
+    return jsonify({'status': 'success', 'data': [driver.serialize for driver in result]})
 
 
 @users.route(urls['get_all'], methods=['GET'])

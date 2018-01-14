@@ -2,6 +2,7 @@ import enum
 from datetime import datetime
 
 from app import db
+from .users import User
 
 
 class ShuttleSizeEnum(enum.Enum):
@@ -49,10 +50,10 @@ class Shuttle(db.Model):
         return {
             'shuttle_id': self.id,
             'brand': self.brand,
-            'user_id': self.user_id,
             'size': self.size.value,
             'ac': self.ac,
             'en_route': self.en_route,
+            'user': join_table(self, Shuttle, User, 'user_id'),
             'longitude': self.longitude,
             'latitude': self.latitude,
             'no_of_seats': self.no_of_seats,
@@ -92,6 +93,7 @@ class Location(db.Model):
             'description': self.description,
             'latitude': self.latitude,
             'longitude': self.longitude,
+            'directions': join_table(self, Location, Directions, 'id', 'location_id'),
             'type': self.type.value,
             'created': self.created,
             'updated': self.updated
@@ -105,3 +107,56 @@ class Location(db.Model):
         self.longitude = longitude
         self.created = datetime.now()
 
+
+class Directions(db.Model):
+
+    __tablename__ = 'directions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    location_id = db.Column(db.Integer, db.ForeignKey('location.id'))
+    driving = db.Column(db.String(128), nullable=True)
+    walking = db.Column(db.String(128), nullable=True)
+    transit = db.Column(db.String(128), nullable=True)
+    created = db.Column(db.DateTime)
+    updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+    @property
+    def serialize(self):
+        return {
+            '_id': self.id,
+            'driving': self.driving,
+            'walking': self.walking,
+            'transit': self.transit,
+            'created': self.created,
+            'updated': self.updated
+        }
+
+    def __init__(self, location_id, driving, walking, transit):
+        self.location_id = location_id
+        self.driving = driving
+        self.walking = walking
+        self.transit = transit
+        self.created = datetime.now()
+
+
+def join_table(model, model_class, join_model, field, join_model_field=None):
+    """
+    Use this to perform a join to another model
+    :param model:
+    :param model_class:
+    :param join_model:
+    :param join_model_field:
+    :param field:
+    :return:
+    """
+    self_field = getattr(model, field)
+    join_field = getattr(join_model, join_model_field or field)
+
+    result = db.session.query(join_model, model_class).filter(join_field == self_field).first()
+
+    if result is None:
+        return result
+
+    join_model_result, self_result = result
+
+    return join_model_result.serialize
