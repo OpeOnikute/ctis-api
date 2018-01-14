@@ -86,6 +86,10 @@ class User(db.Model):
         return user
 
     @property
+    def confirm_admin(self):
+        return self.account_type.value == 'admin'
+
+    @property
     def serialize(self):
         return {
             '_id': self.user_id,

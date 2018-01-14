@@ -62,7 +62,7 @@ def register_user():
     account_type = request.json.get('accountType')
 
     if db.session.query(User).filter_by(email=email).first() is not None:
-        email_exists = 'Email {0} already exists.'.format(email)
+        email_exists = 'Sorry, a user with this email already exists.'
         app.logger.info(email_exists)
         return jsonify({'status': 'error', 'message': email_exists, 'code': 409})
 
@@ -110,9 +110,18 @@ def login():
 
     email = request.json.get('email')
     password = request.json.get('password')
-    account_type = request.args.get('account_type')
+    account_type = request.args.get('accountType')
 
-    user = db.session.query(User).filter_by(email=email).first()
+    query_args = {
+        'email': email
+    }
+
+    if AccountTypeEnum[account_type] is not None:
+        query_args['account_type'] = AccountTypeEnum[account_type]
+
+    print query_args
+
+    user = db.session.query(User).filter_by(**query_args).first()
 
     if user is None:
         message = 'Sorry, we could not find this user. If you don\'t have an account, please sign up.'
