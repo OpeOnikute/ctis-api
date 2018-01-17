@@ -1,4 +1,4 @@
-python==2.7.12
+python===2.7
 alembic==0.9.1
 appdirs==1.4.3
 appnope==0.1.0
