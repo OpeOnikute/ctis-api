@@ -286,28 +286,29 @@ def get_all_locations():
             # TODO: Figure out how to avoid the multiple loops
             for location in serialized:
                 location_str = "{0},{1}".format(location["latitude"], location["longitude"])
-                location['directions'] = dict()
+
+                if not 'direcions' not in location.keys():
+                    location['directions'] = dict()
 
                 for travel_mode in ['driving', 'walking', 'transit']:
 
-                    location['directions'][travel_mode] = dict()
-                    location['directions'][travel_mode]['routes'] = []
+                    if not location['directions'][travel_mode]:
+                        location['directions'][travel_mode] = dict()
+
+                    # convert to object
+                    l_directions = location['directions'][travel_mode]
+
+                    location['directions'][travel_mode] = {'instructions': l_directions}
 
                     direction_response = directions(gmaps, origin, location_str, travel_mode)
 
                     for result in direction_response:
 
-                        steps = result['legs'][0]['steps'][:2]
+                        step = result['legs'][0]['steps'][0]
 
-                        for step in steps:
-                            direction_result = {
-                                "html_instructions": step['html_instructions'],
-                                "duration": step["duration"],
-                                "distance": step["distance"],
-                                "travel_mode": step['travel_mode']
-                            }
+                        location['directions'][travel_mode]['duration'] = step["duration"]
 
-                            location['directions'][travel_mode]['routes'].append(direction_result)
+                        location['directions'][travel_mode]['distance'] = step["distance"]
 
         except Exception as ex:
             message = 'Could not get directions: {0}'.format(ex)
